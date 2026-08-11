@@ -1,0 +1,65 @@
+name: Deploy AI OPS
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: deploy or rollback
+        required: true
+        default: deploy
+
+concurrency:
+  group: ai-ops-aliyun2
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.14.0"
+          cache: pnpm
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.14.0
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm test
+      - run: pnpm build
+
+  deploy:
+    needs: verify
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          SSH_HOST_KEY: ${{ secrets.DEPLOY_HOST_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$SSH_HOST_KEY" > ~/.ssh/known_hosts
+      - name: Upload release
+        if: inputs.action != 'rollback'
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          PORT: ${{ secrets.DEPLOY_PORT }}
+          USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          tar --exclude=.git --exclude=node_modules --exclude=.next --exclude=.env -czf /tmp/ai-ops.tgz .
+          scp -i ~/.ssh/deploy_key -P "$PORT" /tmp/ai-ops.tgz "$USER@$HOST:/tmp/ai-ops-${GITHUB_SHA}.tgz"
+      - name: Deploy or rollback on aliyun2
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          PORT: ${{ secrets.DEPLOY_PORT }}
+          USER: ${{ secrets.DEPLOY_USER }}
+          ACTION: ${{ inputs.action || 'deploy' }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "$PORT" "$USER@$HOST" \
+            "ACTION=$ACTION RELEASE_SHA=$GITHUB_SHA ARCHIVE=/tmp/ai-ops-${GITHUB_SHA}.tgz DEPLOY_ROOT=/opt/ai-ops sh -s" \
+            < ops/deploy.sh

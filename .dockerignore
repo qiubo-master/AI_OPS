@@ -1,0 +1,10 @@
+.git
+.github
+.next
+node_modules
+docs
+*.log
+.env
+.wrangler
+outputs
+work
