@@ -1,6 +1,8 @@
 FROM node:22.14.0-alpine AS deps
 WORKDIR /app
-RUN corepack enable
+RUN corepack enable && corepack prepare pnpm@10.14.0 --activate \
+    && pnpm config set registry https://registry.npmmirror.com \
+    && pnpm config set fetch-timeout 300000
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 
@@ -9,7 +11,8 @@ WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-RUN corepack enable && pnpm test && pnpm build
+RUN corepack enable && corepack prepare pnpm@10.14.0 --activate \
+    && pnpm test && pnpm build
 
 FROM node:22.14.0-alpine AS runner
 WORKDIR /app
