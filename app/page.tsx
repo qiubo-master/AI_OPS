@@ -96,7 +96,7 @@ export default function Home() {
         ) : (
           <>
             <section className="hero-row">
-              <div><span className="pill">MVP试点课程</span><h2>{course.title}</h2><p>{course.objective}</p><div className="meta"><span>受众 · {course.audience}</span><span>时长 · {course.duration}</span><span>版本 · v0.1</span></div></div>
+              <div><span className="pill">MVP试点课程</span><h2>{course.title}</h2><p>{course.objective}</p><div className="meta"><span>受众 · {course.audience}</span><span>时长 · {course.duration}</span><span>数据库版本 · v{course.version ?? 1}</span></div></div>
               <div className="hero-actions"><button className="secondary" disabled={saving} onClick={saveDraft}>{saving ? "保存中…" : "保存草稿"}</button><button className="primary" disabled={generating} onClick={generateCourse}>{generating ? "生成中…" : "AI重新生成"}</button></div>
             </section>
 
