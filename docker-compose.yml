@@ -1,4 +1,22 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ai_ops}
+      POSTGRES_USER: ${POSTGRES_USER:-ai_ops}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ai_ops_local_change_me}
+    volumes:
+      - ai_ops_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ai_ops} -d ${POSTGRES_DB:-ai_ops}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    mem_limit: 512m
+    security_opt:
+      - no-new-privileges:true
+
   ai-ops:
     image: ${AI_OPS_IMAGE:-ai-ops:local}
     build:
@@ -6,6 +24,11 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-ai_ops}:${POSTGRES_PASSWORD:-ai_ops_local_change_me}@postgres:5432/${POSTGRES_DB:-ai_ops}
+    depends_on:
+      postgres:
+        condition: service_healthy
     ports:
       - "${AI_OPS_BIND:-0.0.0.0}:${AI_OPS_PORT:-3000}:3000"
     mem_limit: ${AI_OPS_MEMORY_LIMIT:-2g}
@@ -18,3 +41,6 @@ services:
     labels:
       forgeops.project: ai-ops
       forgeops.service: web
+
+volumes:
+  ai_ops_postgres:

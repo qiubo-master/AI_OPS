@@ -1,4 +1,9 @@
+import { saveCourse } from "@/lib/db";
+import type { Course } from "@/lib/course";
+
 type GenerateRequest = { topic?: string; audience?: string };
+
+export const runtime = "nodejs";
 
 const mockCourse = (topic: string, audience: string) => ({
   title: topic,
@@ -35,7 +40,8 @@ export async function POST(request: Request) {
   const token = process.env.CSS_API_TOKEN;
 
   if (!llmUrl || !ragUrl) {
-    return Response.json({ mode: "mock", course: mockCourse(topic, audience) });
+    const course = await saveCourse(mockCourse(topic, audience));
+    return Response.json({ mode: "mock", course });
   }
 
   try {
@@ -50,9 +56,9 @@ export async function POST(request: Request) {
     }, token);
     const course = (result as { course?: unknown }).course;
     if (!course) throw new Error("missing course");
-    return Response.json({ mode: "live", course });
+    return Response.json({ mode: "live", course: await saveCourse(course as Course) });
   } catch (error) {
     console.error("course generation upstream failure", error instanceof Error ? error.message : "unknown");
-    return Response.json({ mode: "fallback", course: mockCourse(topic, audience) });
+    return Response.json({ mode: "fallback", course: await saveCourse(mockCourse(topic, audience)) });
   }
 }

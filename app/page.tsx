@@ -1,58 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-
-type Slide = {
-  eyebrow: string;
-  title: string;
-  body: string;
-  points: string[];
-  note: string;
-  source: string;
-};
-
-type Course = {
-  title: string;
-  subtitle: string;
-  audience: string;
-  duration: string;
-  objective: string;
-  slides: Slide[];
-};
-
-const initialCourse: Course = {
-  title: "轮胎基础知识与标准服务流程",
-  subtitle: "门店技师标准化培训 · 试点课程",
-  audience: "轮胎技师 / 服务顾问 / 新店店长",
-  duration: "约 24 分钟",
-  objective: "掌握轮胎标识、基础检查与门店标准接待交付流程",
-  slides: [
-    {
-      eyebrow: "01 · 课程导入",
-      title: "为什么轮胎服务必须标准化",
-      body: "轮胎连接车辆与路面。专业服务不止是完成安装，更要把安全检查、适配确认与交付说明做到一致。",
-      points: ["降低错配与返工风险", "统一技师与服务顾问沟通口径", "让车主理解每一步服务依据"],
-      note: "开场先强调安全与专业价值，不承诺具体事故概率。",
-      source: "培训知识库 · 轮胎服务SOP v3.2",
-    },
-    {
-      eyebrow: "02 · 基础知识",
-      title: "读懂 225/55 R17 97W",
-      body: "一组标识同时描述断面宽度、扁平比、结构、轮辋直径、负荷指数与速度级别。",
-      points: ["225：断面宽度（mm）", "55：扁平比", "R17：子午线结构与17英寸轮辋", "97W：负荷与速度级别"],
-      note: "提醒学员：实际适配必须核对车型、年款、前后轴和原厂规格。",
-      source: "培训知识库 · 轮胎规格识别指南 v2.7",
-    },
-    {
-      eyebrow: "03 · 标准流程",
-      title: "接车检查：先确认，再施工",
-      body: "围绕车辆、轮胎、订单和客户诉求完成四项确认，并记录可追溯结果。",
-      points: ["车辆与订单信息核对", "胎压、磨损、损伤与生产日期检查", "前后轴规格及安装方向确认", "异常项拍照并与客户确认"],
-      note: "鼓包、露帘线、严重失压等情况按安全规则升级处理。",
-      source: "培训知识库 · 门店轮胎接车检查清单 v4.1",
-    },
-  ],
-};
+import { useEffect, useMemo, useState } from "react";
+import { Course, initialCourse } from "@/lib/course";
 
 const nav = ["工作台", "AI培训课件", "AI图像质检", "AI检测报价", "AI养护方案"];
 
@@ -61,10 +10,44 @@ export default function Home() {
   const [course, setCourse] = useState(initialCourse);
   const [slideIndex, setSlideIndex] = useState(0);
   const [generating, setGenerating] = useState(false);
-  const [notice, setNotice] = useState("当前为草稿 · 引用检查已通过");
+  const [saving, setSaving] = useState(false);
+  const [notice, setNotice] = useState("正在连接课程数据库…");
   const [role, setRole] = useState("总部培训运营");
   const slide = course.slides[slideIndex] ?? course.slides[0];
   const completion = useMemo(() => Math.round(((slideIndex + 1) / course.slides.length) * 100), [slideIndex, course.slides.length]);
+
+  useEffect(() => {
+    fetch("/api/courses")
+      .then(async (response) => {
+        if (!response.ok) throw new Error("load failed");
+        return response.json() as Promise<{ courses: Course[] }>;
+      })
+      .then(({ courses }) => {
+        if (courses[0]) setCourse(courses[0]);
+        setNotice(courses[0] ? "数据库已加载 · 当前为持久化草稿" : "数据库已连接 · 等待创建课程");
+      })
+      .catch(() => setNotice("数据库连接失败 · 当前显示本地兜底内容"));
+  }, []);
+
+  async function saveDraft() {
+    setSaving(true);
+    setNotice("正在保存到PostgreSQL…");
+    try {
+      const response = await fetch("/api/courses", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(course),
+      });
+      if (!response.ok) throw new Error("save failed");
+      const data = (await response.json()) as { course: Course };
+      setCourse(data.course);
+      setNotice(`已保存到数据库 · 版本 v${data.course.version ?? 1}`);
+    } catch {
+      setNotice("保存失败 · 请检查数据库状态");
+    } finally {
+      setSaving(false);
+    }
+  }
 
   async function generateCourse() {
     setGenerating(true);
@@ -79,7 +62,7 @@ export default function Home() {
       const data = (await response.json()) as { course: Course; mode: string };
       setCourse(data.course);
       setSlideIndex(0);
-      setNotice(data.mode === "live" ? "生成完成 · 已调用智能客服API" : "生成完成 · 当前使用可演示Mock数据");
+      setNotice(data.mode === "live" ? "生成完成并已入库 · 已调用智能客服API" : "生成完成并已入库 · 当前使用Mock模型数据");
     } catch {
       setNotice("生成失败 · 已保留当前草稿，请检查接口配置");
     } finally {
@@ -114,7 +97,7 @@ export default function Home() {
           <>
             <section className="hero-row">
               <div><span className="pill">MVP试点课程</span><h2>{course.title}</h2><p>{course.objective}</p><div className="meta"><span>受众 · {course.audience}</span><span>时长 · {course.duration}</span><span>版本 · v0.1</span></div></div>
-              <div className="hero-actions"><button className="secondary">保存草稿</button><button className="primary" disabled={generating} onClick={generateCourse}>{generating ? "生成中…" : "AI重新生成"}</button></div>
+              <div className="hero-actions"><button className="secondary" disabled={saving} onClick={saveDraft}>{saving ? "保存中…" : "保存草稿"}</button><button className="primary" disabled={generating} onClick={generateCourse}>{generating ? "生成中…" : "AI重新生成"}</button></div>
             </section>
 
             <div className="flowbar"><span className="done">1 课程配置</span><i /><span className="done">2 AI生成</span><i /><span className="current">3 内容编辑</span><i /><span>4 审核发布</span><div className="flow-notice">{notice}</div></div>
