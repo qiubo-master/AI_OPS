@@ -12,8 +12,12 @@ test -f "$ROOT/shared/.env" || cp /dev/null "$ROOT/shared/.env"
 if [ "${ACTION:-deploy}" = "rollback" ]; then
   test -L "$ROOT/previous"
   PREVIOUS="$(readlink -f "$ROOT/previous")"
+  if [ -L "$ROOT/current" ]; then
+    CURRENT="$(readlink -f "$ROOT/current")"
+    (cd "$CURRENT" && docker compose down --remove-orphans) || true
+  fi
   cd "$PREVIOUS"
-  docker compose --env-file "$ROOT/shared/.env" up -d --build
+  docker compose -p ai-ops --env-file "$ROOT/shared/.env" up -d --build
   ln -sfn "$PREVIOUS" "$ROOT/current"
   exit 0
 fi
@@ -24,14 +28,18 @@ cd "$RELEASE"
 cp "$ROOT/shared/.env" .env
 
 docker compose build --pull
-docker compose up -d
+if [ -L "$ROOT/current" ]; then
+  CURRENT="$(readlink -f "$ROOT/current")"
+  (cd "$CURRENT" && docker compose down --remove-orphans) || true
+fi
+docker compose -p ai-ops up -d
 
 PORT="$(grep '^AI_OPS_PORT=' .env | tail -n 1 | cut -d= -f2- || true)"
 PORT="${PORT:-3000}"
 attempt=0
 until curl -fsS "http://127.0.0.1:$PORT/api/health" >/dev/null; do
   attempt=$((attempt + 1))
-  [ "$attempt" -lt 30 ] || { docker compose logs --tail=120; exit 1; }
+  [ "$attempt" -lt 30 ] || { docker compose -p ai-ops logs --tail=120; exit 1; }
   sleep 2
 done
 

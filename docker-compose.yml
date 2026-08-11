@@ -44,3 +44,4 @@ services:
 
 volumes:
   ai_ops_postgres:
+    name: ai_ops_postgres_data
