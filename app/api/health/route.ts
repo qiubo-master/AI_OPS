@@ -12,8 +12,8 @@ export async function GET() {
     version: process.env.APP_VERSION ?? "dev",
     integrations: {
       database,
-      llm: Boolean(process.env.CSS_LLM_API_URL),
-      rag: Boolean(process.env.CSS_RAG_API_URL),
+      foundation: Boolean(process.env.FOUNDATION_API_URL && process.env.FOUNDATION_API_KEY),
+      digitalHuman: Boolean(process.env.DIGITAL_HUMAN_API_URL && process.env.DIGITAL_HUMAN_API_KEY),
     },
   }, { status: database ? 200 : 503 });
 }

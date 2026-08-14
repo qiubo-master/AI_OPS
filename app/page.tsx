@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Course, initialCourse } from "@/lib/course";
+import type { InspectionResult, MaintenanceResult, QuoteResult } from "@/lib/business";
 
 const nav = ["工作台", "AI培训课件", "AI图像质检", "AI检测报价", "AI养护方案"];
 
@@ -78,7 +79,7 @@ export default function Home() {
           {nav.map((item, index) => (
             <button key={item} className={active === item ? "nav-item active" : "nav-item"} onClick={() => setActive(item)}>
               <span>{["⌂", "▤", "◫", "￥", "✦"][index]}</span>{item}
-              {index > 1 && <em>规划中</em>}
+              {index > 0 && <em>已接入</em>}
             </button>
           ))}
         </nav>
@@ -92,7 +93,7 @@ export default function Home() {
         </header>
 
         {active !== "AI培训课件" ? (
-          <div className="empty-module"><span>即将开放</span><h2>{active}</h2><p>首期先完成AI培训课件的生产、审核与发布闭环。</p><button onClick={() => setActive("AI培训课件")}>返回培训课件</button></div>
+          <BusinessModule active={active} />
         ) : (
           <>
             <section className="hero-row">
@@ -139,4 +140,56 @@ export default function Home() {
       </section>
     </main>
   );
+}
+
+function BusinessModule({ active }: { active: string }) {
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState("等待提交任务");
+  const [imageId, setImageId] = useState("img_demo_tire_001");
+  const [vehicle, setVehicle] = useState("2021款 大众朗逸 1.4T");
+  const [findings, setFindings] = useState("右前轮异常磨损，制动时轻微抖动");
+  const [mileage, setMileage] = useState("60000");
+  const [result, setResult] = useState<InspectionResult | QuoteResult | MaintenanceResult | null>(null);
+
+  if (active === "工作台") {
+    return <section className="module-board"><span className="pill">AI能力总览</span><h2>四个业务模块已接入统一大模型基座</h2><div className="capability-grid">{["数字人培训课件", "AI图像质检", "AI检测报价", "AI养护方案"].map((item) => <article key={item}><b>{item}</b><p>阿里云LangGraph编排 · AutoDL Foundation API · PostgreSQL审计</p><span>可用</span></article>)}</div></section>;
+  }
+
+  const configs = {
+    "AI图像质检": { title: "门店与车辆图像智能检测", desc: "调用YOLO、OCR、Qwen-VL完整视觉分析，再由巡检工作流完成规则校验与人工复核分流。", action: "开始视觉检测" },
+    "AI检测报价": { title: "检测结果与维修报价生成", desc: "融合视觉结果、维修知识和业务规则，生成可解释的项目与预估报价。", action: "生成检测报价" },
+    "AI养护方案": { title: "个性化养护方案", desc: "根据车型、里程和车况检索养护知识，由文本基座生成分级养护建议。", action: "生成养护方案" },
+  } as const;
+  const config = configs[active as keyof typeof configs];
+  if (!config) return null;
+
+  async function submit() {
+    setBusy(true); setNotice("LangGraph工作流执行中…"); setResult(null);
+    const endpoint = active === "AI图像质检" ? "/api/inspection/analyze" : active === "AI检测报价" ? "/api/quotes/generate" : "/api/maintenance/generate";
+    const body = active === "AI图像质检" ? { imageId, scene: "tire_inspection" } : active === "AI检测报价" ? { imageId, vehicle, findings } : { vehicle, mileage: Number(mileage), usage: "城市通勤" };
+    try {
+      const response = await fetch(endpoint, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      const payload = await response.json() as { run?: { result: InspectionResult | QuoteResult | MaintenanceResult; mode: string; traceId: string }; message?: string };
+      if (!response.ok || !payload.run) throw new Error(payload.message || "执行失败");
+      setResult(payload.run.result); setNotice(`${payload.run.mode === "live" ? "通用基座" : "Mock基座"}执行完成 · Trace ${payload.run.traceId.slice(0, 12)}`);
+    } catch (error) { setNotice(error instanceof Error ? error.message : "执行失败"); }
+    finally { setBusy(false); }
+  }
+
+  return <section className="business-module">
+    <div className="module-head"><span className="pill">Foundation API · LangGraph</span><h2>{config.title}</h2><p>{config.desc}</p></div>
+    <div className="business-grid"><div className="task-form">
+      {(active === "AI图像质检" || active === "AI检测报价") && <label>基座图片ID<input value={imageId} onChange={(e) => setImageId(e.target.value)} /><small>图片先上传到AutoDL通用基座，业务端只传image_id。</small></label>}
+      {(active === "AI检测报价" || active === "AI养护方案") && <label>车辆信息<input value={vehicle} onChange={(e) => setVehicle(e.target.value)} /></label>}
+      {active === "AI检测报价" && <label>检测发现<textarea value={findings} onChange={(e) => setFindings(e.target.value)} /></label>}
+      {active === "AI养护方案" && <label>当前里程<input type="number" value={mileage} onChange={(e) => setMileage(e.target.value)} /></label>}
+      <button className="primary module-submit" disabled={busy} onClick={submit}>{busy ? "执行中…" : config.action}</button><p className="module-notice">{notice}</p>
+    </div><div className="result-panel">{result ? <ResultView result={result} /> : <div className="result-empty"><b>运行结果</b><p>提交任务后，这里展示结构化结论、依据、报价或养护项目。每次调用都会写入数据库。</p></div>}</div></div>
+  </section>;
+}
+
+function ResultView({ result }: { result: InspectionResult | QuoteResult | MaintenanceResult }) {
+  if ("findings" in result) return <><span className={`risk ${result.riskLevel}`}>{result.riskLevel.toUpperCase()}</span><h3>{result.summary}</h3>{result.findings.map((item) => <article className="result-item" key={item.code}><b>{item.name} · {Math.round(item.confidence * 100)}%</b><p>{item.action}</p></article>)}<small>需要人工复核：{result.requiresReview ? "是" : "否"}</small></>;
+  if ("total" in result) return <><h3>{result.diagnosis}</h3>{result.items.map((item) => <article className="result-item" key={item.name}><b>{item.name}</b><p>{item.reason}</p><span>¥{item.unitPrice * item.quantity + item.laborPrice}</span></article>)}<div className="result-total">预估合计 <b>¥{result.total}</b></div><small>{result.disclaimer}</small></>;
+  return <><h3>{result.strategy}</h3>{result.items.map((item) => <article className="result-item" key={item.name}><b>{item.priority} · {item.name}</b><p>{item.reason}</p><span>{item.cycle}</span></article>)}<div className="result-total">下次建议 <b>{result.nextVisit}</b></div></>;
 }

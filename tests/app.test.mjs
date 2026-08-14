@@ -22,10 +22,25 @@ test("课程通过PostgreSQL持久化并由页面真实读写", async () => {
   assert.match(compose, /ai_ops_postgres/);
 });
 
-test("模型和RAG通过环境变量接入且支持Mock", async () => {
+test("课件通过通用基座接入且支持Mock", async () => {
   const route = await readFile(new URL("../app/api/course/generate/route.ts", import.meta.url), "utf8");
-  assert.match(route, /CSS_LLM_API_URL/);
-  assert.match(route, /CSS_RAG_API_URL/);
+  const foundation = await readFile(new URL("../lib/foundation.ts", import.meta.url), "utf8");
+  assert.match(foundation, /FOUNDATION_API_URL/);
+  assert.match(foundation, /FOUNDATION_API_KEY/);
   assert.match(route, /mode: "mock"/);
-  assert.match(route, /knowledge_domain: "training"/);
+  assert.match(route, /digital_human_courseware/);
+});
+
+test("三项业务能力拥有独立LangGraph工作流和API", async () => {
+  const workflows = await readFile(new URL("../lib/workflows.ts", import.meta.url), "utf8");
+  const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  const database = await readFile(new URL("../lib/db.ts", import.meta.url), "utf8");
+  assert.match(workflows, /new StateGraph/);
+  assert.match(workflows, /runInspection/);
+  assert.match(workflows, /runQuote/);
+  assert.match(workflows, /runMaintenance/);
+  assert.match(page, /\/api\/inspection\/analyze/);
+  assert.match(page, /\/api\/quotes\/generate/);
+  assert.match(page, /\/api\/maintenance\/generate/);
+  assert.match(database, /CREATE TABLE IF NOT EXISTS business_runs/);
 });

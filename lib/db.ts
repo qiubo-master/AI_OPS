@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Pool } from "pg";
 import { Course, initialCourse } from "./course";
+import type { BusinessKind, BusinessRun } from "./business";
 
 const globalForDb = globalThis as unknown as { aiOpsPool?: Pool; aiOpsSchemaReady?: Promise<void> };
 
@@ -24,6 +25,20 @@ async function ensureSchema() {
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
     `);
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS business_runs (
+        id UUID PRIMARY KEY,
+        kind TEXT NOT NULL,
+        status TEXT NOT NULL,
+        input JSONB NOT NULL,
+        result JSONB NOT NULL,
+        mode TEXT NOT NULL,
+        trace_id TEXT NOT NULL,
+        model_versions JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await db.query("CREATE INDEX IF NOT EXISTS business_runs_kind_created_idx ON business_runs(kind, created_at DESC)");
     const count = await db.query<{ count: string }>("SELECT COUNT(*)::text AS count FROM courses");
     if (count.rows[0]?.count === "0") await insertCourse(initialCourse);
   })();
@@ -85,4 +100,24 @@ export async function databaseReady() {
   await ensureSchema();
   await pool().query("SELECT 1");
   return true;
+}
+
+export async function saveBusinessRun<T>(run: Omit<BusinessRun<T>, "id" | "createdAt" | "status">) {
+  await ensureSchema();
+  const id = randomUUID();
+  const result = await pool().query(
+    `INSERT INTO business_runs (id, kind, status, input, result, mode, trace_id, model_versions)
+     VALUES ($1,$2,'completed',$3::jsonb,$4::jsonb,$5,$6,$7::jsonb)
+     RETURNING created_at`,
+    [id, run.kind, JSON.stringify(run.input), JSON.stringify(run.result), run.mode, run.traceId, JSON.stringify(run.modelVersions)],
+  );
+  return { ...run, id, status: "completed" as const, createdAt: result.rows[0].created_at.toISOString() };
+}
+
+export async function listBusinessRuns(kind?: BusinessKind) {
+  await ensureSchema();
+  const result = kind
+    ? await pool().query("SELECT * FROM business_runs WHERE kind=$1 ORDER BY created_at DESC LIMIT 20", [kind])
+    : await pool().query("SELECT * FROM business_runs ORDER BY created_at DESC LIMIT 50");
+  return result.rows.map((row) => ({ id: row.id, kind: row.kind, status: row.status, input: row.input, result: row.result, mode: row.mode, traceId: row.trace_id, modelVersions: row.model_versions, createdAt: row.created_at.toISOString() }));
 }

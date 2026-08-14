@@ -1,6 +1,6 @@
 # AI 运营工作台
 
-面向运营、门店店长和技师的 AI 课件生产工具。首期聚焦“轮胎基础知识与标准服务流程”，复用既有智能客服大模型 API 与 RAG API，提供课件生成、编辑和 16:9 HTML 预览，不包含学习中心或轻量学习功能。
+面向运营、门店店长和技师的AI运营工作台，包含数字人培训课件、AI图像质检、AI检测报价和AI养护方案。业务界面、LangGraph编排、规则、RAG命名空间和运行审计部署在阿里云AI运营服务；YOLO、OCR、Qwen-VL、文本模型和Embedding统一调用AutoDL大模型通用基座。
 
 ## 本地运行
 
@@ -11,7 +11,7 @@ cp .env.example .env.local
 pnpm dev
 ```
 
-未配置智能客服接口时，系统自动使用内置演示数据，便于界面联调。配置方式见 `.env.example`。
+未配置AutoDL通用基座时，系统自动使用确定性Mock结果，便于界面和数据库联调。配置方式见 `.env.example`。
 
 ## 质量检查
 
@@ -28,7 +28,7 @@ docker compose up -d --build
 curl http://127.0.0.1:3000/api/health
 ```
 
-默认资源建议为 2 核 CPU、2 GB 内存。大模型和 RAG 均作为外部服务调用，本项目容器不部署或训练模型。
+默认资源建议为2核CPU、2GB内存。本项目不部署或训练大模型，通过`/foundation/v1`调用AutoDL通用基座。
 
 ## 发布边界
 
@@ -43,3 +43,13 @@ curl http://127.0.0.1:3000/api/health
 - `docs/03-Gate0评审材料.md`
 - `docs/04-AI运营工作台-PRD.md`
 - `docs/05-AI运营工作台-架构设计.md`
+- `docs/06-AI视觉能力与门店巡检-立项需求.md`
+- `docs/07-AI视觉能力与门店巡检-产品PRD.md`
+- `docs/08-AI视觉能力与门店巡检-架构设计.md`
+- `docs/09-AI检测报价-立项需求.md`
+- `docs/10-AI检测报价-产品PRD.md`
+- `docs/11-AI检测报价-架构设计.md`
+- `docs/12-AI养护方案-立项需求.md`
+- `docs/13-AI养护方案-产品PRD.md`
+- `docs/14-AI养护方案-架构设计.md`
+- `docs/15-AI运营统一基座接入与业务编排架构.md`

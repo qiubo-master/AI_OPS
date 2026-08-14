@@ -1,5 +1,7 @@
 import { saveCourse } from "@/lib/db";
 import type { Course } from "@/lib/course";
+import { callFoundation, foundationConfigured } from "@/lib/foundation";
+import { saveBusinessRun } from "@/lib/db";
 
 type GenerateRequest = { topic?: string; audience?: string };
 
@@ -20,43 +22,32 @@ const mockCourse = (topic: string, audience: string) => ({
   ],
 });
 
-async function callJson(url: string, body: unknown, token?: string) {
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}) },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(45_000),
-  });
-  if (!response.ok) throw new Error(`upstream ${response.status}`);
-  return response.json();
-}
-
 export async function POST(request: Request) {
   const input = (await request.json().catch(() => ({}))) as GenerateRequest;
   const topic = input.topic?.trim() || "轮胎基础知识与标准服务流程";
   const audience = input.audience?.trim() || "轮胎技师 / 服务顾问 / 新店店长";
-  const llmUrl = process.env.CSS_LLM_API_URL;
-  const ragUrl = process.env.CSS_RAG_API_URL;
-  const token = process.env.CSS_API_TOKEN;
-
-  if (!llmUrl || !ragUrl) {
+  if (!foundationConfigured()) {
     const course = await saveCourse(mockCourse(topic, audience));
+    await saveBusinessRun({ kind: "courseware", input: { topic, audience }, result: course, mode: "mock", traceId: `mock_${crypto.randomUUID()}`, modelVersions: { text: "mock-qwen" } });
     return Response.json({ mode: "mock", course });
   }
 
   try {
-    const evidence = await callJson(ragUrl, { query: topic, biz_line: "tire", knowledge_domain: "training", top_k: 8 }, token);
-    const result = await callJson(llmUrl, {
+    const evidence = await callFoundation<Record<string, unknown>>("/foundation/v1/embeddings", { query: topic, namespace: "digital_human_courseware", top_k: 8 });
+    const generated = await callFoundation<{ course: Course }>("/foundation/v1/text/chat", {
       task: "training_course_generation",
-      response_format: "json",
+      model_mode: "chat",
       topic,
       audience,
-      evidence,
-      requirements: { language: "zh-CN", format: "html_slides", require_citations: true, human_review: true },
-    }, token);
-    const course = (result as { course?: unknown }).course;
+      evidence: evidence.data,
+      response_schema: "digital_human_courseware_v1",
+      requirements: { language: "zh-CN", format: "html_slides", include_script: true, include_subtitles: true, require_citations: true, human_review: true },
+    });
+    const course = generated.data.course;
     if (!course) throw new Error("missing course");
-    return Response.json({ mode: "live", course: await saveCourse(course as Course) });
+    const saved = await saveCourse(course);
+    await saveBusinessRun({ kind: "courseware", input: { topic, audience }, result: saved, mode: "live", traceId: generated.traceId, modelVersions: generated.modelVersions });
+    return Response.json({ mode: "live", course: saved });
   } catch (error) {
     console.error("course generation upstream failure", error instanceof Error ? error.message : "unknown");
     return Response.json({ mode: "fallback", course: await saveCourse(mockCourse(topic, audience)) });
